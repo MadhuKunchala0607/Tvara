@@ -1,5 +1,5 @@
 const express = require('express');
-const mysql = require('mysql2');
+const mongoose = require('mongoose');
 const multer = require('multer');
 const path = require('path');
 const app = express();
@@ -15,7 +15,7 @@ app.use(express.static('public'));
 // Configure Multer for File Uploads
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, 'public/uploads'); 
+        cb(null, 'public/uploads');
     },
     filename: (req, file, cb) => {
         const uniqueName = `${Date.now()}-${file.originalname}`;
@@ -24,21 +24,22 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// MySQL Connection (using environment variables for production)
-const db = mysql.createConnection({
-    host: process.env.DB_HOST || 'localhost',    // Change these as needed
-    user: process.env.DB_USER || 'root',        // Set in Render dashboard
-    password: process.env.DB_PASSWORD || 'madhu',// Set in Render dashboard
-    database: process.env.DB_NAME || 'tvarapick'// Set in Render dashboard
+// MongoDB Connection (using Mongoose)
+mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+    .then(() => console.log('Connected to MongoDB'))
+    .catch((err) => console.error('Error connecting to MongoDB:', err));
+
+// Product Schema
+const productSchema = new mongoose.Schema({
+    name: String,
+    price: Number,
+    category: String,
+    shopkeeper: String,
+    location: String,
+    image: String
 });
 
-db.connect((err) => {
-    if (err) {
-        console.error('Error connecting to MySQL:', err);
-        return;
-    }
-    console.log('Connected to MySQL');
-});
+const Product = mongoose.model('Product', productSchema);
 
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'form.html'));
@@ -54,12 +55,19 @@ app.post('/products', upload.single('image'), (req, res) => {
         return res.status(400).send("All fields are required!");
     }
 
-    const query = `INSERT INTO products (name, price, category, shopkeeper, location, image) VALUES (?, ?, ?, ?, ?, ?)`;
-    const values = [name, price, category, shopkeeper, location, image];
+    // Create a new product document
+    const newProduct = new Product({
+        name,
+        price,
+        category,
+        shopkeeper,
+        location,
+        image
+    });
 
-    db.query(query, values, (err, result) => {
+    newProduct.save((err) => {
         if (err) {
-            console.error('Error inserting product:', err);
+            console.error('Error saving product:', err);
             return res.status(500).send("Database error");
         }
 
@@ -70,15 +78,13 @@ app.post('/products', upload.single('image'), (req, res) => {
 
 // GET Endpoint to Fetch Products
 app.get('/items', (req, res) => {
-    const query = 'SELECT * FROM products';
-
-    db.query(query, (err, results) => {
+    Product.find((err, products) => {
         if (err) {
             console.error('Error fetching products:', err);
             return res.status(500).send('Database error');
         }
 
-        res.json(results);
+        res.json(products);
     });
 });
 
